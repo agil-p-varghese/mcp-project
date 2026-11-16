@@ -1,6 +1,9 @@
+import re
+from decimal import Decimal
+from datetime import date, datetime
 
 from fastmcp import FastMCP
-from db.connection import get_connection
+from db.connection import get_connection, get_readonly_connection
 
 mcp = FastMCP("BakeHouse Database Analyst")
 
@@ -72,3 +75,66 @@ def inspect_schema() -> dict:
         "database": database_name,
         "tables": schema_info
     }
+
+
+@mcp.tool()
+def execute_readonly_sql(sql: str) -> dict:
+    """
+    Execute a read-only SQL query against the BakeHouse database.
+
+    Only SELECT and WITH queries are accepted.
+    Returns column names, query results and truncation status.
+    Maximum returned rows: 1000.
+    """
+
+    query = sql.strip().rstrip(";").strip()
+
+    if not query:
+        return {"error": "SQL query cannot be empty."}
+
+    if ";" in query:
+        return {"error": "Multiple SQL statements are not allowed."}
+
+    if not re.match(r"^(SELECT|WITH)\b", query, re.IGNORECASE):
+        return {"error": "Only SELECT and WITH queries are allowed."}
+
+    try:
+        with get_readonly_connection() as conn:
+            with conn.cursor() as cur:
+
+                # Enforce read-only mode for this transaction
+                cur.execute("SET TRANSACTION READ ONLY")
+
+                cur.execute(query)
+
+                columns = [desc.name for desc in cur.description]
+
+                rows = cur.fetchmany(1001)
+
+                truncated = len(rows) > 1000
+                rows = rows[:1000]
+
+                result_rows = []
+
+                for row in rows:
+                    result = {}
+
+                    for column, value in zip(columns, row):
+                        if isinstance(value, Decimal):
+                            value = str(value)
+                        elif isinstance(value, (date, datetime)):
+                            value = value.isoformat()
+
+                        result[column] = value
+
+                    result_rows.append(result)
+
+        return {
+            "columns": columns,
+            "rows": result_rows,
+            "returned_rows": len(result_rows),
+            "truncated": truncated
+        }
+
+    except Exception as e:
+        return {"error": str(e)}
