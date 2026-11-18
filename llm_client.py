@@ -261,6 +261,44 @@ async def main():
                                             print("\nSummary Result:")
                                             print("================")
                                             print(summary_result.structured_content)
+                                            #adding logic to connect tool 4
+                                            #
+                                            # Extract summary data
+                                            summary_data = summary_result.structured_content
+
+                                            # Add summary tool call and result to conversation
+                                            messages.extend([
+                                                {
+                                                    "role": "assistant",
+                                                    "tool_calls": [
+                                                        {
+                                                            "id": summary_tool_call.id,
+                                                            "type": "function",
+                                                            "function": {
+                                                                "name": summary_tool_name,
+                                                                "arguments": json.dumps(summary_arguments)
+                                                            }
+                                                        }
+                                                    ]
+                                                },
+                                                {
+                                                    "role": "tool",
+                                                    "tool_call_id": summary_tool_call.id,
+                                                    "content": json.dumps(summary_data)
+                                                }
+                                            ])
+
+                                            # Ask LLM to generate the report
+                                            report_response = llm.chat.completions.create(
+                                                model=MODEL,
+                                                messages=messages,
+                                                tools=openai_tools,
+                                                tool_choice="auto",
+                                                max_tokens=500
+                                            )
+
+                                            print("\nLLM Response After Summarization:")
+                                            print(report_response.choices[0].message)
                                         else:
                                             print("Tool execution skipped for this test.")
 
