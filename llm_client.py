@@ -299,6 +299,40 @@ async def main():
 
                                             print("\nLLM Response After Summarization:")
                                             print(report_response.choices[0].message)
+                                            #
+                                            #logic for generate report
+                                            #
+                                            report_message = report_response.choices[0].message
+
+                                            if report_message.tool_calls:
+
+                                                for report_tool_call in report_message.tool_calls:
+
+                                                    report_tool_name = report_tool_call.function.name
+
+                                                    report_arguments = json.loads(
+                                                        report_tool_call.function.arguments
+                                                    )
+
+                                                    print("\nNext Tool Selected:", report_tool_name)
+                                                    print("Arguments:", report_arguments)
+
+                                                    if report_tool_name == "generate_report":
+
+                                                        print("\nExecuting Report Tool...")
+
+                                                        report_result = await mcp_client.call_tool(
+                                                            report_tool_name,
+                                                            report_arguments
+                                                        )
+
+                                                        print("\nFinal Business Report:")
+                                                        print("======================")
+                                                        print(report_result.structured_content)
+
+                                            else:
+                                                print("\nLLM returned a final response:")
+                                                print(report_message.content)
                                         else:
                                             print("Tool execution skipped for this test.")
 
