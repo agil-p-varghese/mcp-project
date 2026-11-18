@@ -1,0 +1,18 @@
+User Question
+     |
+     v
+     LLM
+     |
+     v
+Select MCP Tool
+     |
+     v
+Execute Tool
+     |
+     v
+Return Result to LLM
+     |
+     +------> Select another tool
+     |
+     v
+Final Answer
