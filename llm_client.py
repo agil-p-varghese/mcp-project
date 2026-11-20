@@ -68,7 +68,7 @@ async def main():
         openai_tools = convert_mcp_tools_to_openai(mcp_tools)
 
         # Business question
-        business_question = "Which store generates the highest sales?"
+        business_question = "Which is the store having highest sales?"
 
         
         # Conversation history
