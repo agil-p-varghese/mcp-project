@@ -83,8 +83,13 @@ async def main():
             }
         ]
 
+        # Maximum number of LLM iterations
+        MAX_ITERATIONS = 10
+
         # Generic LLM tool-calling loop
-        while True:
+        for iteration in range(MAX_ITERATIONS):
+
+            print(f"\n--- Agent Iteration {iteration + 1} ---")
 
             response = llm.chat.completions.create(
                 model=MODEL,
@@ -124,6 +129,16 @@ async def main():
 
                 print("\nExecuting MCP Tool...")
 
+                # Validate selected tool
+                available_tool_names = {
+                    tool.name for tool in mcp_tools
+                }
+
+                if tool_name not in available_tool_names:
+                    print(f"Invalid tool requested: {tool_name}")
+                    continue
+
+                # Execute validated tool
                 result = await mcp_client.call_tool(
                     tool_name,
                     arguments
@@ -143,6 +158,8 @@ async def main():
                         "content": json.dumps(tool_result, default=str)
                     }
                 )
+        else:
+            print("\nMaximum iterations reached. Stopping agent.")
 
 if __name__ == "__main__":
     asyncio.run(main())
