@@ -70,32 +70,47 @@ async def main():
         # Business question
         business_question = "Which store generates the highest sales?"
 
-        # Send question to Hugging Face LLM
-        response = llm.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {
-                    "role": "system",
-                    "content": SYSTEM_PROMPT
-                },
-                {
-                    "role": "user",
-                    "content": business_question
-                }
-            ],
-            tools=openai_tools,
-            tool_choice="auto",
-            max_tokens=500
-        )
-
-        message = response.choices[0].message
-
-        print("\nLLM Response:")
-        print(message)
-
         
-        if message.tool_calls:
+        # Conversation history
+        messages = [
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT
+            },
+            {
+                "role": "user",
+                "content": business_question
+            }
+        ]
 
+        # Generic LLM tool-calling loop
+        while True:
+
+            response = llm.chat.completions.create(
+                model=MODEL,
+                messages=messages,
+                tools=openai_tools,
+                tool_choice="auto",
+                max_tokens=500
+            )
+
+            message = response.choices[0].message
+
+            print("\nLLM Response:")
+            print(message)
+
+            # Stop when the LLM has no more tool calls
+            if not message.tool_calls:
+                print("\nFinal LLM Answer:")
+                print(message.content)
+                break
+
+            # Preserve the assistant's tool-call message
+            messages.append(
+                message.model_dump(exclude_none=True)
+            )
+
+            # Execute every tool selected by the LLM
             for tool_call in message.tool_calls:
 
                 tool_name = tool_call.function.name
@@ -107,239 +122,27 @@ async def main():
                 print("\nTool Selected:", tool_name)
                 print("Arguments:", arguments)
 
-                # For this test, execute only inspect_schema
-                if tool_name == "inspect_schema":
+                print("\nExecuting MCP Tool...")
 
-                    print("\nExecuting MCP Tool...")
+                result = await mcp_client.call_tool(
+                    tool_name,
+                    arguments
+                )
 
-                    result = await mcp_client.call_tool(
-                        tool_name,
-                        arguments
-                    )
+                # Extract structured result
+                tool_result = result.structured_content
 
-                    # Extract structured schema
-                    schema = result.structured_content
+                print("\nMCP Tool Result:")
+                print(tool_result)
 
-                    print("\nSchema retrieved successfully!")
-
-                    # Send schema back to the LLM
-                    messages = [
-                        {
-                            "role": "system",
-                            "content": SYSTEM_PROMPT
-                        },
-                        {
-                            "role": "user",
-                            "content": business_question
-                        },
-                        {
-                            "role": "assistant",
-                            "tool_calls": [
-                                {
-                                    "id": tool_call.id,
-                                    "type": "function",
-                                    "function": {
-                                        "name": tool_name,
-                                        "arguments": json.dumps(arguments)
-                                    }
-                                }
-                            ]
-                        },
-                        {
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": json.dumps(schema)
-                        }
-                    ]
-
-                    # Ask the LLM to continue
-                    next_response = llm.chat.completions.create(
-                        model=MODEL,
-                        messages=messages,
-                        tools=openai_tools,
-                        tool_choice="auto",
-                        max_tokens=500
-                    )
-
-                    print("\nLLM Response After Schema Inspection:")
-                    print(next_response.choices[0].message)
-
-                    #adding logic for execute read_only sql tool
-                    next_message = next_response.choices[0].message
-
-                    if next_message.tool_calls:
-
-                        for next_tool_call in next_message.tool_calls:
-
-                            tool_name = next_tool_call.function.name
-
-                            arguments = json.loads(
-                                next_tool_call.function.arguments
-                            )
-
-                            print("\nNext Tool Selected:", tool_name)
-                            print("Arguments:", arguments)
-
-                            if tool_name == "execute_readonly_sql":
-
-                                print("\nExecuting SQL through MCP...")
-
-                                query_result = await mcp_client.call_tool(
-                                    tool_name,
-                                    arguments
-                                )
-
-                                print("\nDatabase Query Result:")
-                                print("======================")
-                                print(query_result)
-
-                                ###
-
-                                # Extract structured query results
-                                query_data = query_result.structured_content
-
-                                # Add SQL execution result to conversation
-                                messages.extend([
-                                    {
-                                        "role": "assistant",
-                                        "tool_calls": [
-                                            {
-                                                "id": next_tool_call.id,
-                                                "type": "function",
-                                                "function": {
-                                                    "name": tool_name,
-                                                    "arguments": json.dumps(arguments)
-                                                }
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "role": "tool",
-                                        "tool_call_id": next_tool_call.id,
-                                        "content": json.dumps(query_data)
-                                    }
-                                ])
-
-                                # Ask LLM for the next action
-                                summary_response = llm.chat.completions.create(
-                                    model=MODEL,
-                                    messages=messages,
-                                    tools=openai_tools,
-                                    tool_choice="auto",
-                                    max_tokens=500
-                                )
-
-                                print("\nLLM Response After SQL Execution:")
-                                print(summary_response.choices[0].message)
-                                #
-                                #logic for summarize tool.py
-                                #
-                                summary_message = summary_response.choices[0].message
-
-                                if summary_message.tool_calls:
-
-                                    for summary_tool_call in summary_message.tool_calls:
-
-                                        summary_tool_name = summary_tool_call.function.name
-
-                                        summary_arguments = json.loads(
-                                            summary_tool_call.function.arguments
-                                        )
-
-                                        print("\nNext Tool Selected:", summary_tool_name)
-                                        print("Arguments:", summary_arguments)
-
-                                        if summary_tool_name == "summarize_results":
-
-                                            print("\nExecuting Summary Tool...")
-
-                                            summary_result = await mcp_client.call_tool(
-                                                summary_tool_name,
-                                                summary_arguments
-                                            )
-
-                                            print("\nSummary Result:")
-                                            print("================")
-                                            print(summary_result.structured_content)
-                                            #adding logic to connect tool 4
-                                            #
-                                            # Extract summary data
-                                            summary_data = summary_result.structured_content
-
-                                            # Add summary tool call and result to conversation
-                                            messages.extend([
-                                                {
-                                                    "role": "assistant",
-                                                    "tool_calls": [
-                                                        {
-                                                            "id": summary_tool_call.id,
-                                                            "type": "function",
-                                                            "function": {
-                                                                "name": summary_tool_name,
-                                                                "arguments": json.dumps(summary_arguments)
-                                                            }
-                                                        }
-                                                    ]
-                                                },
-                                                {
-                                                    "role": "tool",
-                                                    "tool_call_id": summary_tool_call.id,
-                                                    "content": json.dumps(summary_data)
-                                                }
-                                            ])
-
-                                            # Ask LLM to generate the report
-                                            report_response = llm.chat.completions.create(
-                                                model=MODEL,
-                                                messages=messages,
-                                                tools=openai_tools,
-                                                tool_choice="auto",
-                                                max_tokens=500
-                                            )
-
-                                            print("\nLLM Response After Summarization:")
-                                            print(report_response.choices[0].message)
-                                            #
-                                            #logic for generate report
-                                            #
-                                            report_message = report_response.choices[0].message
-
-                                            if report_message.tool_calls:
-
-                                                for report_tool_call in report_message.tool_calls:
-
-                                                    report_tool_name = report_tool_call.function.name
-
-                                                    report_arguments = json.loads(
-                                                        report_tool_call.function.arguments
-                                                    )
-
-                                                    print("\nNext Tool Selected:", report_tool_name)
-                                                    print("Arguments:", report_arguments)
-
-                                                    if report_tool_name == "generate_report":
-
-                                                        print("\nExecuting Report Tool...")
-
-                                                        report_result = await mcp_client.call_tool(
-                                                            report_tool_name,
-                                                            report_arguments
-                                                        )
-
-                                                        print("\nFinal Business Report:")
-                                                        print("======================")
-                                                        print(report_result.structured_content)
-
-                                            else:
-                                                print("\nLLM returned a final response:")
-                                                print(report_message.content)
-                                        else:
-                                            print("Tool execution skipped for this test.")
-
-            else:
-                print("\nLLM responded without selecting a tool.")
-
-
+                # Send the result back to the LLM
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": json.dumps(tool_result, default=str)
+                    }
+                )
 
 if __name__ == "__main__":
     asyncio.run(main())

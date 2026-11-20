@@ -16,3 +16,11 @@ Return Result to LLM
      |
      v
 Final Answer
+///////////questions
+now the tool calling is in a nested loop structure.
+now we make it in way each tool calling is upto llm.llm will have freedom to select the tool at its disposal .
+i want to know following
+1)in a mcp system how does the llm know the tools at its disposal,and its functionallity?is it by name of each tool like (inspect_schema) or there is any mechanism?
+2)
+////////////
+if not good idea go for xml format file.
