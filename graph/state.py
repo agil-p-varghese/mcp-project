@@ -11,6 +11,8 @@ class BakeryState(TypedDict):
     tasks: List[Dict[str, Any]]
     current_task: Dict[str, Any]
 
+    schema: Dict[str, Any]
+
     # Database execution information
     sql_queries: List[str]
     query_results: List[Dict[str, Any]]

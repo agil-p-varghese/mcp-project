@@ -55,111 +55,49 @@ def convert_mcp_tools_to_openai(mcp_tools):
     return openai_tools
 
 
+
 async def main():
+
+    # Import here to avoid circular imports:
+    # graph.nodes imports llm and MODEL from this file.
+    from graph.workflow import build_workflow
 
     async with Client(Path("main.py")) as mcp_client:
 
         print("Connected to BakeHouse MCP Server!")
 
-        # Discover MCP tools
-        mcp_tools = await mcp_client.list_tools()
+        # Build the LangGraph workflow
+        workflow = build_workflow(mcp_client)
 
-        # Convert tools for the LLM
-        openai_tools = convert_mcp_tools_to_openai(mcp_tools)
+        # Initial shared state
+        initial_state = {
+            "business_question": "Which is the store having highest sales?",
+            "tasks": [],
+            "current_task": {},
+            "schema": {},
+            "sql_queries": [],
+            "query_results": [],
+            "task_analyses": [],
+            "observations": [],
+            "final_resolution": "",
+            "final_report": ""
+        }
 
-        # Business question
-        business_question = "Which is the store having highest sales?"
+        print("\nStarting Bakery Analytics Workflow...")
 
-        
-        # Conversation history
-        messages = [
-            {
-                "role": "system",
-                "content": SYSTEM_PROMPT
-            },
-            {
-                "role": "user",
-                "content": business_question
-            }
-        ]
+        # Execute the complete multi-agent workflow
+        final_state = await workflow.ainvoke(initial_state)
 
-        # Maximum number of LLM iterations
-        MAX_ITERATIONS = 10
+        print("\n========== FINAL REPORT ==========\n")
+        print(final_state["final_report"])
 
-        # Generic LLM tool-calling loop
-        for iteration in range(MAX_ITERATIONS):
+        print("\n========== EXECUTION SUMMARY ==========\n")
+        print("Tasks:", len(final_state["tasks"]))
+        print("SQL queries executed:", len(final_state["sql_queries"]))
+        print("Analyses completed:", len(final_state["task_analyses"]))
 
-            print(f"\n--- Agent Iteration {iteration + 1} ---")
-
-            response = llm.chat.completions.create(
-                model=MODEL,
-                messages=messages,
-                tools=openai_tools,
-                tool_choice="auto",
-                max_tokens=500
-            )
-
-            message = response.choices[0].message
-
-            print("\nLLM Response:")
-            print(message)
-
-            # Stop when the LLM has no more tool calls
-            if not message.tool_calls:
-                print("\nFinal LLM Answer:")
-                print(message.content)
-                break
-
-            # Preserve the assistant's tool-call message
-            messages.append(
-                message.model_dump(exclude_none=True)
-            )
-
-            # Execute every tool selected by the LLM
-            for tool_call in message.tool_calls:
-
-                tool_name = tool_call.function.name
-
-                arguments = json.loads(
-                    tool_call.function.arguments
-                )
-
-                print("\nTool Selected:", tool_name)
-                print("Arguments:", arguments)
-
-                print("\nExecuting MCP Tool...")
-
-                # Validate selected tool
-                available_tool_names = {
-                    tool.name for tool in mcp_tools
-                }
-
-                if tool_name not in available_tool_names:
-                    print(f"Invalid tool requested: {tool_name}")
-                    continue
-
-                # Execute validated tool
-                result = await mcp_client.call_tool(
-                    tool_name,
-                    arguments
-                )
-
-                # Extract structured result
-                tool_result = result.structured_content
-
-                print("\nMCP Tool Result:")
-                print(tool_result)
-
-                # Send the result back to the LLM
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": json.dumps(tool_result, default=str)
-                    }
-                )
-        else:
-            print("\nMaximum iterations reached. Stopping agent.")
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
