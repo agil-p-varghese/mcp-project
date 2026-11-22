@@ -35,6 +35,14 @@ def create_mcp_tool_callers(mcp_client):
     }
 
 
+#for observation -metatags,etc 
+@traceable(
+    name="Planner Agent",
+    run_type="chain",
+    tags=["agent:planner"],
+    metadata={"agent": "planner"}
+)
+
 def planner_node(state: BakeryState):
 
     # First execution: decompose the business question
@@ -86,6 +94,14 @@ def planner_node(state: BakeryState):
         "tasks": tasks,
         "current_task": next_task
     }
+
+#for observation-metadata
+@traceable(
+    name="Database Agent",
+    run_type="chain",
+    tags=["agent:db-agent"],
+    metadata={"agent": "db_agent"}
+)
 
 #db node
 
@@ -148,6 +164,14 @@ async def db_node(state: BakeryState, mcp_tools):
         ]
     }
 
+#for observation
+@traceable(
+    name="Analyst Agent",
+    run_type="chain",
+    tags=["agent:analyst"],
+    metadata={"agent": "analyst"}
+)
+
 #analyst node
 
 def analyst_node(state: BakeryState):
@@ -204,6 +228,13 @@ def analyst_node(state: BakeryState):
         ],
         "observations": state.get("observations", []) + [analysis]
     }
+
+@traceable(
+    name="Report Agent",
+    run_type="chain",
+    tags=["agent:report-agent"],
+    metadata={"agent": "report_agent"}
+)
 
 #report_agent node
 

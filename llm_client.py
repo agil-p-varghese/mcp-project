@@ -88,8 +88,24 @@ async def main():
         print("\nStarting Bakery Analytics Workflow...")
 
         # Execute the complete multi-agent workflow
-        final_state = await workflow.ainvoke(initial_state)
-
+        final_state = await workflow.ainvoke(
+            initial_state,
+            config={
+                "run_name": "bakery-analytics",
+                "tags": [
+                    "bakery-analytics",
+                    "multi-agent",
+                    "development"
+                ],
+                "metadata": {
+                    "application": "BakeHouse Analytics",
+                    "workflow": "bakery-analytics",
+                    "business_question": initial_state["business_question"],
+                    "llm_provider": "Hugging Face",
+                    "database": "bakehouse_db"
+                }
+            }
+        )
         print("\n========== FINAL REPORT ==========\n")
         print(final_state["final_report"])
 
