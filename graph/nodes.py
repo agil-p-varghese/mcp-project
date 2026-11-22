@@ -5,6 +5,34 @@ from agents.db_agent import DB_AGENT_SYSTEM_PROMPT
 from agents.planner import PLANNER_SYSTEM_PROMPT
 from graph.state import BakeryState
 from llm_client import llm, MODEL
+from langsmith import traceable
+
+#mcp helper for tracing
+def create_mcp_tool_callers(mcp_client):
+
+    @traceable(name="inspect_schema", run_type="tool")
+    async def inspect_schema():
+
+        result = await mcp_client.call_tool(
+            "inspect_schema", {}
+        )
+
+        return result.structured_content
+
+    @traceable(name="execute_readonly_sql", run_type="tool")
+    async def execute_readonly_sql(sql: str):
+
+        result = await mcp_client.call_tool(
+            "execute_readonly_sql",
+            {"sql": sql}
+        )
+
+        return result.structured_content
+
+    return {
+        "inspect_schema": inspect_schema,
+        "execute_readonly_sql": execute_readonly_sql
+    }
 
 
 def planner_node(state: BakeryState):
@@ -61,18 +89,14 @@ def planner_node(state: BakeryState):
 
 #db node
 
-async def db_node(state: BakeryState, mcp_client):
+async def db_node(state: BakeryState, mcp_tools):
 
     # 1. Inspect schema if it hasn't been loaded yet
-    schema = state.get("schema", {})
+    schema = await mcp_tools["inspect_schema"]()
 
     if not schema:
-        schema_result = await mcp_client.call_tool(
-            "inspect_schema",
-            {}
-        )
+        schema = await mcp_tools["inspect_schema"]()
 
-        schema = schema_result.structured_content
 
     # 2. Get the current task
     task = state["current_task"]
@@ -108,12 +132,7 @@ async def db_node(state: BakeryState, mcp_client):
     sql = sql.replace("```sql", "").replace("```", "").strip()
 
     # 4. Execute SQL through MCP
-    query_result = await mcp_client.call_tool(
-        "execute_readonly_sql",
-        {"sql": sql}
-    )
-
-    result = query_result.structured_content
+    result = await mcp_tools["execute_readonly_sql"](sql)
 
     # 5. Return updated shared state
     return {

@@ -5,16 +5,18 @@ import json
 from pathlib import Path
 
 from dotenv import load_dotenv
-from openai import OpenAI
 from fastmcp import Client
-
+# Hugging Face LLM connection
+from openai import OpenAI
+from langsmith.wrappers import wrap_openai
 
 load_dotenv()
 
-# Hugging Face LLM connection
-llm = OpenAI(
-    base_url="https://router.huggingface.co/v1",
-    api_key=os.getenv("HF_TOKEN")
+llm = wrap_openai(
+    OpenAI(
+        base_url="https://router.huggingface.co/v1",
+        api_key=os.getenv("HF_TOKEN")
+    )
 )
 
 MODEL = "openai/gpt-oss-120b:cheapest"

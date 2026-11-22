@@ -5,7 +5,8 @@ from graph.nodes import (
     planner_node,
     db_node,
     analyst_node,
-    report_node
+    report_node,
+    create_mcp_tool_callers
 )
 
 
@@ -19,14 +20,16 @@ def planner_router(state: BakeryState):
 
 def build_workflow(mcp_client):
 
+    mcp_tools = create_mcp_tool_callers(mcp_client)
+
     builder = StateGraph(BakeryState)
 
-    # Register agent nodes
     builder.add_node("planner", planner_node)
 
-    # Pass the MCP client to the DB Agent
     async def db_agent_wrapper(state: BakeryState):
-        return await db_node(state, mcp_client)
+        return await db_node(state, mcp_tools)
+
+    # Keep your remaining node and edge definitions unchanged.
 
     builder.add_node("db_agent", db_agent_wrapper)
     builder.add_node("analyst", analyst_node)
