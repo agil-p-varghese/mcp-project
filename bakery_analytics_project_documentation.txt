@@ -1,0 +1,279 @@
+MCP-POWERED MULTI-AGENT BAKERY ANALYTICS SYSTEM Project Overview and
+Technical Documentation ================================================
+
+1. PROJECT OVERVIEW
+
+-   Project name: MCP-Powered Multi-Agent Bakery Analytics System.
+-   Project type: Multi-agent AI application for natural-language
+    database analytics.
+-   Objective: Allow business users to ask questions about bakery sales
+    data in natural language, without manually writing SQL.
+-   The system uses specialized AI agents to plan analysis, inspect a
+    database, generate and execute SQL, interpret results, and produce a
+    business report.
+-   Example question: “Which store has the highest sales?”
+
+2. PROBLEM STATEMENT
+
+-   Traditional database analysis often requires users to understand SQL
+    and database schemas.
+-   Business users may not have the technical skills to write analytical
+    queries.
+-   The application translates business questions into a sequence of
+    database-analysis tasks.
+-   It returns interpreted findings in a structured report rather than
+    requiring users to inspect raw SQL results.
+
+3. DATASET AND DATABASE
+
+-   Database: PostgreSQL 18.7.
+-   Database name: bakehouse_db.
+-   Main table: bakery_sales.
+-   Dataset size: 8,763 records.
+-   Number of columns used: 11.
+-   Columns:
+    -   product_id
+    -   product_weight
+    -   product_sugar_content
+    -   product_type
+    -   product_mrp
+    -   store_id
+    -   store_establishment_year
+    -   store_size
+    -   store_location_city_type
+    -   store_type
+    -   product_store_sales_total
+-   Product_Allocated_Area was excluded from analytical queries.
+
+4. TECHNOLOGY STACK
+
+-   Python:
+    -   Main programming language.
+    -   Implements agent logic, MCP integration, and asynchronous
+        operations.
+-   LangGraph:
+    -   Orchestrates the multi-agent workflow.
+    -   Manages shared state, conditional routing, and task loops.
+-   Model Context Protocol (MCP) / FastMCP:
+    -   Exposes database operations as standardized tools.
+    -   Separates database-tool implementation from the LLM
+        orchestration layer.
+-   PostgreSQL:
+    -   Stores the bakery sales dataset.
+    -   Executes analytical SQL queries.
+-   Hugging Face Inference Providers:
+    -   Provides model inference through an OpenAI-compatible API.
+    -   Configured model: openai/gpt-oss-120b:cheapest.
+-   OpenAI Python SDK:
+    -   Sends chat-completion requests to the OpenAI-compatible
+        inference endpoint.
+-   LangSmith:
+    -   Captures traces, agent/tool execution details, metadata, tags,
+        latency, and token usage.
+-   uv:
+    -   Manages the Python environment and project dependencies.
+
+5. MULTI-AGENT DESIGN
+
+The application contains four specialized agents.
+
+5.1 Planner Agent - Receives the original business question. -
+Decomposes the question into smaller analytical tasks. - Adds execution
+status to each task. - Selects the next pending task. - Routes the
+workflow towards the Database Agent when a pending task exists. - Routes
+the workflow towards the Report Agent when all tasks are complete.
+
+5.2 Database Agent - Retrieves the database schema through the MCP
+inspect_schema tool. - Sends the schema and current task to the LLM. -
+Generates a PostgreSQL SELECT query. - Executes the query through the
+MCP execute_readonly_sql tool. - Stores the SQL query and structured
+result in the shared workflow state.
+
+5.3 Analyst Agent - Reads the latest database query result. - Interprets
+the result in the context of the business question. - Produces business
+findings. - Marks the corresponding task as completed. - Adds the
+analysis to the shared state.
+
+5.4 Report Agent - Receives the completed task analyses and
+observations. - Consolidates the findings. - Generates the final
+business report. - Returns the report as the workflow output.
+
+6. LANGGRAPH WORKFLOW
+
+-   The workflow is implemented using LangGraph StateGraph.
+-   The graph begins at the Planner Agent.
+-   A conditional router checks whether a pending task exists.
+-   If a task exists:
+    -   The workflow moves to the Database Agent.
+    -   The Database Agent inspects the schema, generates SQL, and
+        executes it through MCP.
+    -   The workflow moves to the Analyst Agent.
+    -   The Analyst updates the shared state and marks the task
+        complete.
+    -   Control returns to the Planner Agent.
+-   If no pending task exists:
+    -   The workflow moves to the Report Agent.
+    -   The Report Agent generates the final report.
+    -   The workflow reaches END.
+
+Graph flow: START -> Planner Agent -> Conditional Router -> Pending task
+exists: -> Database Agent -> MCP schema inspection -> LLM SQL generation
+-> MCP SQL execution -> Analyst Agent -> Update shared state -> Return
+to Planner Agent -> No pending task: -> Report Agent -> END
+
+7. SHARED STATE
+
+-   A BakeryState TypedDict is used to share information between graph
+    nodes.
+-   Main state fields:
+    -   business_question: Original user question.
+    -   tasks: List of decomposed tasks and their statuses.
+    -   current_task: Task currently being processed.
+    -   schema: Retrieved database schema.
+    -   sql_queries: SQL queries generated during the workflow.
+    -   query_results: Database results associated with tasks.
+    -   task_analyses: Findings produced by the Analyst Agent.
+    -   observations: Consolidated analytical observations.
+    -   final_resolution: Resolution field in the current state
+        structure.
+    -   final_report: Final generated business report.
+-   Each graph node reads relevant state fields and returns updates.
+-   This allows intermediate results to be passed between agents through
+    the graph.
+
+8. MCP SERVER AND DATABASE TOOLS
+
+-   The MCP server exposes database functionality as tools.
+-   The MCP client discovers available tools and invokes them from the
+    application.
+-   Tools registered in the project include:
+    -   inspect_schema:
+        -   Retrieves database and table schema information.
+    -   execute_readonly_sql:
+        -   Executes permitted read-only SQL and returns structured
+            results.
+    -   summarize_results:
+        -   Provides result summarization functionality.
+    -   Reporting tool:
+        -   Provides report-related functionality.
+-   The current LangGraph database execution path explicitly calls
+    inspect_schema and execute_readonly_sql.
+-   The final business report is generated by the Report Agent.
+
+9. DATABASE SAFETY
+
+-   SQL generated by an LLM is treated as untrusted input.
+-   The read-only SQL tool is designed to:
+    -   Allow SELECT and WITH queries.
+    -   Reject semicolons to prevent multiple SQL statements.
+    -   Execute queries in a read-only transaction.
+    -   Return structured results or an error response.
+-   These checks provide a safety layer independent of the LLM prompt.
+-   Further production hardening could include database least-privilege
+    permissions, query timeouts, row limits, and stronger SQL
+    validation.
+
+10. OBSERVABILITY WITH LANGSMITH
+
+Implemented and verified: - Workflow tracing: - Captures workflow
+execution in the LangSmith project bakehouse-multi-agent. - Workflow
+metadata: - application - workflow - business_question - llm_provider -
+database - Workflow tags: - bakery-analytics - multi-agent -
+development - Agent-level tracing: - Planner Agent - Database Agent -
+Analyst Agent - Report Agent - Agent tags: - agent:planner -
+agent:db-agent - agent:analyst - agent:report-agent - MCP tool
+tracing: - inspect_schema - execute_readonly_sql - Latency monitoring: -
+Individual run durations can be inspected in LangSmith. - Token
+monitoring: - Input tokens, output tokens, total tokens, and available
+cache/reasoning details are visible for LLM runs. - Cost tracking: -
+Monetary cost is not currently displayed for the Hugging Face inference
+calls. - Accurate cost tracking requires provider-specific pricing
+information. - Evaluation: - Automated evaluation of SQL correctness and
+report quality remains a potential enhancement.
+
+11. EXECUTION EXAMPLE
+
+Example business question: - “Which is the store having highest sales?”
+
+Observed workflow execution: - The Planner created two analytical
+tasks. - Two SQL queries were executed. - Two task analyses were
+completed. - The generated report identified OUT004 as the store with
+the highest sales.
+
+Observed result: - Highest-selling store: OUT004. - Sales attributed to
+OUT004: 15,427,583.43. - Total sales across stores: 30,355,063.90. -
+OUT004 contribution: approximately 50.9%.
+
+12. KEY ENGINEERING DECISIONS
+
+-   Multi-agent design:
+    -   Separates planning, database interaction, analysis, and
+        reporting responsibilities.
+-   LangGraph:
+    -   Supports stateful execution, conditional routing, and repeated
+        task processing.
+-   MCP:
+    -   Separates database tools from the agent orchestration code.
+    -   Provides a standardized tool interface that can be reused by
+        compatible clients.
+-   Shared state:
+    -   Maintains task status and intermediate outputs across agent
+        executions.
+-   Read-only database access:
+    -   Reduces the risk of destructive SQL operations.
+-   LangSmith:
+    -   Makes it possible to inspect agent runs, tool calls, latency,
+        and token usage.
+
+13. CURRENT IMPLEMENTATION STATUS
+
+Implemented and tested: - PostgreSQL database integration. - MCP server
+and database tool integration. - Four-agent architecture. - LangGraph
+workflow and conditional routing. - Shared state management. - Hugging
+Face LLM inference integration. - SQL generation and read-only
+execution. - Business report generation. - LangSmith workflow, agent,
+and MCP tool tracing. - Workflow metadata and tags. - Latency
+visibility. - LLM token usage visibility.
+
+Potential future enhancements: - Automated evaluation of SQL correctness
+and report quality. - More comprehensive error handling, retries, and
+recovery. - Provider-specific monetary cost tracking. - FastAPI
+interface for external users. - Authentication, authorization, rate
+limiting, and production deployment. - Additional monitoring and
+alerting.
+
+14. INTERVIEW SUMMARY
+
+-   I developed an AI-powered database analytics application that allows
+    business users to ask questions about structured bakery sales data
+    in natural language.
+-   I implemented four specialized agents using LangGraph: Planner,
+    Database Agent, Analyst, and Report Agent.
+-   The Planner decomposes questions into tasks. The Database Agent
+    inspects the schema, generates SQL, and executes it through MCP
+    tools. The Analyst interprets the results, and the Report Agent
+    generates the final report.
+-   I used MCP to separate database operations from the LLM
+    orchestration layer and expose those operations as standardized
+    tools.
+-   LangGraph manages the workflow through conditional routing and
+    shared state.
+-   I integrated LangSmith to trace agent executions and MCP tool calls
+    and to inspect metadata, latency, and token usage.
+-   I implemented read-only SQL restrictions to reduce the risk of
+    database modification.
+
+15. INTERVIEW TOPICS TO PREPARE
+
+-   Why use LangGraph instead of a simple sequential chain?
+-   Why use multiple specialized agents?
+-   What is MCP, and how does its client-server architecture work?
+-   How does the LLM discover and invoke MCP tools?
+-   How does conditional routing work in LangGraph?
+-   How is information shared between agents?
+-   How are generated SQL queries restricted?
+-   How can incorrect SQL or analytical output be debugged?
+-   What does LangSmith capture?
+-   How would the application be secured and scaled for production?
+
+END OF DOCUMENT
